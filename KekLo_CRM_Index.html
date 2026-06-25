@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- QR Scanner library -->
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: Arial, sans-serif;
+      background: #f0f4f8;
+      color: #333;
+    }
+
+    header {
+      background: #1a4a7a;
+      color: white;
+      padding: 16px 20px;
+      text-align: center;
+    }
+
+    header h1 { font-size: 18px; }
+    header p  { font-size: 12px; opacity: 0.8; margin-top: 4px; }
+
+    nav {
+      display: flex;
+      background: #163d6b;
+    }
+
+    nav button {
+      flex: 1;
+      padding: 12px;
+      background: none;
+      border: none;
+      color: #aac4e0;
+      cursor: pointer;
+      font-size: 13px;
+      border-bottom: 3px solid transparent;
+    }
+
+    nav button.active {
+      color: white;
+      border-bottom: 3px solid #4db8ff;
+    }
+
+    .tab { display: none; padding: 16px; }
+    .tab.active { display: block; }
+
+    /* --- TAGOK LISTA --- */
+    .card {
+      background: white;
+      border-radius: 8px;
+      padding: 14px;
+      margin-bottom: 10px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+    }
+
+    .card .name { font-weight: bold; font-size: 15px; }
+    .card .email { color: #666; font-size: 13px; margin: 2px 0 6px; }
+
+    .status {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: bold;
+    }
+
+    .status.Elfogadva  { background: #d4edda; color: #155724; }
+    .status.Elutasítva { background: #f8d7da; color: #721c24; }
+    .status.Függő      { background: #fff3cd; color: #856404; }
+
+    .actions { margin-top: 10px; display: flex; gap: 6px; flex-wrap: wrap; }
+
+    .btn {
+      padding: 7px 14px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: bold;
+    }
+
+    .btn-ok     { background: #28a745; color: white; }
+    .btn-no     { background: #dc3545; color: white; }
+    .btn-resend { background: #6c757d; color: white; }
+
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* --- QR SCANNER --- */
+    #reader { width: 100%; max-width: 340px; margin: 0 auto; }
+
+    .scan-result {
+      margin-top: 20px;
+      padding: 20px;
+      border-radius: 10px;
+      text-align: center;
+      font-size: 20px;
+      font-weight: bold;
+    }
+
+    .scan-ok  { background: #d4edda; color: #155724; }
+    .scan-bad { background: #f8d7da; color: #721c24; }
+
+    /* --- TAG ELLENŐRZŐ --- */
+    .check-box {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      text-align: center;
+    }
+
+    .check-box input {
+      width: 100%;
+      max-width: 300px;
+      padding: 10px;
+      font-size: 15px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      margin-bottom: 10px;
+    }
+
+    .check-box button {
+      padding: 10px 24px;
+      background: #1a4a7a;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 15px;
+      cursor: pointer;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 30px;
+      color: #888;
+    }
+  </style>
+</head>
+
+<body>
+
+<header>
+  <h1>🐴 Kék Ló Zeneterápiás Egyesület</h1>
+  <p>Admin Dashboard</p>
+</header>
+
+<nav>
+  <button class="active" onclick="showTab('tagok', this)">👥 Tagok</button>
+  <button onclick="showTab('scanner', this)">📷 QR Scanner</button>
+  <button onclick="showTab('ellenorzes', this)">🔍 Ellenőrzés</button>
+</nav>
+
+<!-- TAB 1: TAGOK -->
+<div id="tab-tagok" class="tab active">
+  <div id="tagok-list">
+    <div class="loading">⏳ Tagok betöltése...</div>
+  </div>
+</div>
+
+<!-- TAB 2: QR SCANNER -->
+<div id="tab-scanner" class="tab">
+  <div id="reader"></div>
+  <div id="scan-result" class="scan-result" style="display:none;"></div>
+  <div style="text-align:center; margin-top:12px;">
+    <button class="btn btn-resend" onclick="resetScanner()">🔄 Új beolvasás</button>
+  </div>
+</div>
+
+<!-- TAB 3: KÉZI ELLENŐRZÉS -->
+<div id="tab-ellenorzes" class="tab">
+  <div class="check-box">
+    <p style="margin-bottom:12px; color:#555;">Add meg a Tag ID-t (pl. KLZ-2026-1)</p>
+    <input id="tagInput" placeholder="KLZ-2026-..." />
+    <br>
+    <button onclick="manualCheck()">🔍 Ellenőrzés</button>
+    <div id="check-result" style="margin-top:16px;"></div>
+  </div>
+</div>
+
+
+<script>
+// ── Offline cache (memóriában, localStorage nélkül) ──────────
+let memberCache = [];
+
+// ── Tab váltás ────────────────────────────────────────────────
+function showTab(name, btn) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  btn.classList.add('active');
+
+  if (name === 'scanner') initScanner();
+  if (name === 'tagok') loadMembers();
+}
+
+// ── Tagok betöltése ───────────────────────────────────────────
+function loadMembers() {
+  document.getElementById('tagok-list').innerHTML =
+    '<div class="loading">⏳ Tagok betöltése...</div>';
+  google.script.run
+    .withSuccessHandler(renderMembers)
+    .withFailureHandler(function(e) {
+      document.getElementById('tagok-list').innerHTML =
+        '<div class="loading">❌ Hiba: ' + e.message + '</div>';
+    })
+    .getMembers();
+}
+
+function renderMembers(data) {
+  memberCache = data; // cache mentése memóriába
+
+  if (!data || data.length === 0) {
+    document.getElementById('tagok-list').innerHTML =
+      '<div class="loading">Nincs még tag a rendszerben.</div>';
+    return;
+  }
+
+  let html = '';
+  data.forEach(function(m) {
+    html += `
+      <div class="card">
+        <div class="name">${m.name}</div>
+        <div class="email">${m.email}</div>
+        <span class="status ${m.status}">${m.status || 'Ismeretlen'}</span>
+        <div class="actions">
+          <button class="btn btn-ok"
+            onclick="doApprove(${m.row}, this)"
+            ${m.status === 'Elfogadva' ? 'disabled' : ''}>
+            ✔ Elfogad
+          </button>
+          <button class="btn btn-no"
+            onclick="doReject(${m.row}, this)"
+            ${m.status === 'Elutasítva' ? 'disabled' : ''}>
+            ✖ Elutasít
+          </button>
+          <button class="btn btn-resend"
+            onclick="doResend(${m.row}, this)">
+            📩 Újraküld
+          </button>
+        </div>
+      </div>
+    `;
+  });
+
+  document.getElementById('tagok-list').innerHTML = html;
+}
+
+function doApprove(row, btn) {
+  btn.disabled = true;
+  btn.textContent = '⏳';
+  google.script.run.withSuccessHandler(loadMembers).approve(row);
+}
+
+function doReject(row, btn) {
+  btn.disabled = true;
+  btn.textContent = '⏳';
+  google.script.run.withSuccessHandler(loadMembers).reject(row);
+}
+
+function doResend(row, btn) {
+  btn.disabled = true;
+  btn.textContent = '⏳ Küldés...';
+  google.script.run.withSuccessHandler(function() {
+    btn.textContent = '✔ Elküldve';
+  }).resendEmail(row);
+}
+
+// ── QR Scanner ────────────────────────────────────────────────
+let scanner = null;
+let scannerRunning = false;
+
+function initScanner() {
+  if (scannerRunning) return;
+
+  document.getElementById('scan-result').style.display = 'none';
+
+  scanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: 250 });
+  scanner.render(onScanSuccess);
+  scannerRunning = true;
+}
+
+function onScanSuccess(decodedText) {
+  // Online ellenőrzés elsőként
+  if (navigator.onLine) {
+    google.script.run
+      .withSuccessHandler(showScanResult)
+      .withFailureHandler(function() {
+        // Ha hálózati hiba → offline fallback
+        showScanResult(checkOffline(decodedText));
+      })
+      .verifyEntry(decodedText);
+  } else {
+    showScanResult(checkOffline(decodedText));
+  }
+}
+
+function showScanResult(res) {
+  var el = document.getElementById('scan-result');
+  el.style.display = 'block';
+
+  if (res.ok) {
+    el.className = 'scan-result scan-ok';
+    el.innerHTML = '✔ BELÉPÉS ENGEDÉLYEZVE<br><small>' + res.name + '</small>';
+  } else {
+    el.className = 'scan-result scan-bad';
+    el.innerHTML = '❌ BELÉPÉS MEGTAGADVA<br><small>' + (res.reason || '') + '</small>';
+  }
+}
+
+function resetScanner() {
+  document.getElementById('scan-result').style.display = 'none';
+  // Scanner újraindul automatikusan
+}
+
+// ── Offline ellenőrzés (memória cache alapján) ────────────────
+// FONTOS: getMembers() visszaad tagId mezőt, ez alapján keres
+function checkOffline(tagId) {
+  for (var i = 0; i < memberCache.length; i++) {
+    var m = memberCache[i];
+    if (m.tagId === tagId) {
+      if (m.status !== 'Elfogadva') {
+        return { ok: false, reason: 'NEM AKTÍV TAG (offline)' };
+      }
+      return { ok: true, name: m.name };
+    }
+  }
+  return { ok: false, reason: 'NEM TALÁLHATÓ (offline)' };
+}
+
+// ── Kézi ellenőrzés ───────────────────────────────────────────
+function manualCheck() {
+  var tagId = document.getElementById('tagInput').value.trim();
+  if (!tagId) return;
+
+  document.getElementById('check-result').innerHTML = '⏳ Ellenőrzés...';
+
+  google.script.run
+    .withSuccessHandler(function(res) {
+      var el = document.getElementById('check-result');
+      if (!res.found) {
+        el.innerHTML = '<div class="scan-result scan-bad">❌ ÉRVÉNYTELEN TAG</div>';
+      } else if (res.status !== 'Elfogadva') {
+        el.innerHTML = '<div class="scan-result scan-bad">⚠ NEM AKTÍV TAG<br><small>' + res.name + '</small></div>';
+      } else {
+        el.innerHTML = '<div class="scan-result scan-ok">✔ ÉRVÉNYES TAG<br><small>' + res.name + '</small></div>';
+      }
+    })
+    .checkTag(tagId);
+}
+
+// ── Oldal betöltésekor tagok + cache előtöltése ───────────────
+loadMembers();
+</script>
+
+</body>
+</html>
