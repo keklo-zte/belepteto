@@ -133,14 +133,12 @@ function parseCSV(csv) {
     if (cols.length < 5) continue;
     result.push({
       name:   cols[1] || '',
-      status: cols[4] || '',
-      tagId:  cols[10] || ''
+      status: (cols[4] || '').replace(/\r/g, '').trim(),
+tagId:  (cols[10] || '').replace(/\r/g, '').trim()
     });
   }
   return result;
 }
-Commit changes → szólj ha megvan! 👇
-
 function showResult(res) {
   var el = document.getElementById('result');
   el.style.display = 'block';
