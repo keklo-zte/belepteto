@@ -10,20 +10,17 @@
     body { font-family: Arial, sans-serif; background: #1a4a7a; min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 20px; }
     header { color: white; text-align: center; margin-bottom: 20px; }
     header h1 { font-size: 22px; }
-    header p  { font-size: 13px; opacity: 0.8; margin-top: 4px; }
+    header p { font-size: 13px; opacity: 0.8; margin-top: 4px; }
     .card { background: white; border-radius: 12px; padding: 20px; width: 100%; max-width: 400px; margin-bottom: 16px; }
     #reader { width: 100%; border-radius: 8px; overflow: hidden; }
     .result { display: none; padding: 20px; border-radius: 10px; text-align: center; font-size: 22px; font-weight: bold; margin-top: 16px; width: 100%; max-width: 400px; }
-    .result.ok  { background: #d4edda; color: #155724; }
+    .result.ok { background: #d4edda; color: #155724; }
     .result.bad { background: #f8d7da; color: #721c24; }
     .result small { display: block; font-size: 15px; margin-top: 8px; font-weight: normal; }
     .btn { display: block; width: 100%; max-width: 400px; padding: 14px; background: white; color: #1a4a7a; border: none; border-radius: 10px; font-size: 16px; font-weight: bold; cursor: pointer; margin-top: 12px; }
     .status { color: white; font-size: 13px; margin-top: 8px; opacity: 0.8; text-align: center; }
-    .admin-section { background: white; border-radius: 12px; padding: 20px; width: 100%; max-width: 400px; margin-top: 20px; }
-    .admin-section h3 { font-size: 15px; color: #1a4a7a; margin-bottom: 12px; }
-    .admin-section textarea { width: 100%; height: 100px; padding: 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 12px; font-family: monospace; margin-bottom: 8px; }
-    .admin-section button { width: 100%; padding: 10px; background: #1a4a7a; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; }
-    .tag-count { font-size: 12px; color: #666; margin-top: 6px; text-align: center; }
+    .tag-count { color: white; font-size: 13px; margin-top: 6px; text-align: center; opacity: 0.9; }
+    .refresh-btn { display: block; width: 100%; max-width: 400px; padding: 10px; background: rgba(255,255,255,0.2); color: white; border: 2px solid white; border-radius: 10px; font-size: 14px; cursor: pointer; margin-top: 8px; }
   </style>
 </head>
 <body>
@@ -40,46 +37,49 @@
 <div class="result" id="result"></div>
 
 <button class="btn" onclick="resetScanner()">🔄 Új beolvasás</button>
+<button class="refresh-btn" onclick="loadMembers()">⬇️ Taglista frissítése</button>
 
-<div class="status" id="status">Kamera indítása...</div>
-
-<div class="admin-section">
-  <h3>🔧 Taglista frissítése</h3>
-  <p style="font-size:12px; color:#666; margin-bottom:8px;">Másold be a taglistát JSON formátumban:</p>
-  <textarea id="jsonInput" placeholder='[{"tagId":"KLZ-2026-2","name":"Teszt Elek","status":"Elfogadva"}]'></textarea>
-  <button onclick="updateMembers()">💾 Taglista mentése</button>
-  <div class="tag-count" id="tagCount"></div>
-</div>
+<div class="status" id="status">Taglista betöltése...</div>
+<div class="tag-count" id="tagCount"></div>
 
 <script>
 var members = [];
+var CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS3ca5xb92mEWwASp4YOmphLEBrayDVuncxlSYlxle_sm_GBV9MlPqs4VsTtCkMVQUrIM6QXQdD_7nR/pub?gid=1708434895&single=true&output=csv";
 
 function loadMembers() {
-  try {
-    var saved = localStorage.getItem('keklo_members');
-    if (saved) {
-      members = JSON.parse(saved);
-      document.getElementById('tagCount').textContent = members.length + ' tag betöltve';
-    }
-  } catch(e) { members = []; }
+  document.getElementById('tagCount').textContent = '⏳ Taglista betöltése...';
+  fetch(CSV_URL)
+    .then(function(r) { return r.text(); })
+    .then(function(csv) {
+      members = parseCSV(csv);
+      var active = members.filter(function(m) { return m.status === 'Elfogadva'; }).length;
+      document.getElementById('tagCount').textContent = '✓ ' + active + ' aktív tag betöltve';
+      document.getElementById('status').textContent = '📷 Kamera aktív – tartsd a QR kódot a kamera elé';
+    })
+    .catch(function(err) {
+      document.getElementById('tagCount').textContent = '❌ Hiba a betöltésnél';
+      document.getElementById('status').textContent = 'Hálózati hiba – ellenőrizd a kapcsolatot';
+    });
 }
 
-function updateMembers() {
-  try {
-    var json = document.getElementById('jsonInput').value.trim();
-    var data = JSON.parse(json);
-    members = data;
-    localStorage.setItem('keklo_members', JSON.stringify(data));
-    document.getElementById('tagCount').textContent = data.length + ' tag elmentve ✓';
-    document.getElementById('jsonInput').value = '';
-  } catch(e) {
-    alert('Hibás JSON formátum!');
+function parseCSV(csv) {
+  var lines = csv.split('\n');
+  var result = [];
+  // Fejléc: A=Időbélyeg, B=Név, C=Lakcím, D=Email, E=Státusz, K=TagID (11. oszlop)
+  for (var i = 1; i < lines.length; i++) {
+    var cols = lines[i].split(',');
+    if (cols.length < 5) continue;
+    result.push({
+      name:   cols[1] ? cols[1].trim().replace(/"/g, '') : '',
+      status: cols[4] ? cols[4].trim().replace(/"/g, '') : '',
+      tagId:  cols[10] ? cols[10].trim().replace(/"/g, '') : ''
+    });
   }
+  return result;
 }
 
 function checkMember(tagId) {
   var id = tagId;
-  if (tagId.includes('#')) id = tagId.split('#').pop();
   var match = tagId.match(/KLZ-\d{4}-\d+/);
   if (match) id = match[0];
   for (var i = 0; i < members.length; i++) {
@@ -91,31 +91,24 @@ function checkMember(tagId) {
   return { ok: false, reason: 'NEM TALÁLHATÓ', name: '' };
 }
 
-var scanner = null;
 var lastScan = '';
 var lastScanTime = 0;
 
 function startScanner() {
-  scanner = new Html5Qrcode("reader");
+  var scanner = new Html5Qrcode("reader");
   scanner.start(
     { facingMode: "environment" },
     { fps: 10, qrbox: { width: 250, height: 250 } },
-    onScanSuccess,
+    function(decodedText) {
+      var now = Date.now();
+      if (decodedText === lastScan && now - lastScanTime < 3000) return;
+      lastScan = decodedText;
+      lastScanTime = now;
+      var res = checkMember(decodedText);
+      showResult(res);
+    },
     function() {}
-  ).then(function() {
-    document.getElementById('status').textContent = '📷 Kamera aktív – tartsd a QR kódot a kamera elé';
-  }).catch(function(err) {
-    document.getElementById('status').textContent = '❌ Kamera hiba: ' + err;
-  });
-}
-
-function onScanSuccess(decodedText) {
-  var now = Date.now();
-  if (decodedText === lastScan && now - lastScanTime < 3000) return;
-  lastScan = decodedText;
-  lastScanTime = now;
-  var res = checkMember(decodedText);
-  showResult(res);
+  );
 }
 
 function showResult(res) {
