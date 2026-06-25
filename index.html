@@ -110,6 +110,36 @@ function startScanner() {
     function() {}
   );
 }
+function parseCSV(csv) {
+  var lines = csv.split('\n');
+  var result = [];
+  for (var i = 1; i < lines.length; i++) {
+    var line = lines[i].trim();
+    if (!line) continue;
+    var cols = [];
+    var current = '';
+    var inQuotes = false;
+    for (var j = 0; j < line.length; j++) {
+      if (line[j] === '"') {
+        inQuotes = !inQuotes;
+      } else if (line[j] === ',' && !inQuotes) {
+        cols.push(current.trim());
+        current = '';
+      } else {
+        current += line[j];
+      }
+    }
+    cols.push(current.trim());
+    if (cols.length < 5) continue;
+    result.push({
+      name:   cols[1] || '',
+      status: cols[4] || '',
+      tagId:  cols[10] || ''
+    });
+  }
+  return result;
+}
+Commit changes → szólj ha megvan! 👇
 
 function showResult(res) {
   var el = document.getElementById('result');
